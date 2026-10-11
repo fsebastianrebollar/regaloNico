@@ -10,10 +10,24 @@
 #include "mode_switch.h"
 
 #define BRI 40
+#define BOOT_FLAG_MS  5000
+#define BOOT_FLAG_BRI 160
 
-// Mientras conecta: un punto ámbar que recorre la tira
+static absolute_time_t boot_flag_until;
+
+// Bandera de España fija: indica que la vitrina ha arrancado
+static void show_boot_flag(void) {
+    for (int i = 0; i < NUM_LEDS; i++) {
+        if ((i * 3) / NUM_LEDS == 1) leds_set(i, BOOT_FLAG_BRI, BOOT_FLAG_BRI * 170 / 255, 0);
+        else                         leds_set(i, BOOT_FLAG_BRI, 0, 0);
+    }
+    leds_show();
+}
+
+// Mientras conecta (pasada la bandera): un punto ámbar que recorre la tira
 static void connecting_anim(void) {
     static uint32_t last, pos;
+    if (!time_reached(boot_flag_until)) return;
     uint32_t now = to_ms_since_boot(get_absolute_time());
     if (now - last < 150) return;
     last = now;
@@ -29,6 +43,10 @@ int main(void) {
     buttons_init();
     settings_init();
 
+    // Nada más arrancar, 5 s de bandera con el motor parado; el WiFi conecta mientras
+    boot_flag_until = make_timeout_time_ms(BOOT_FLAG_MS);
+    show_boot_flag();
+
     wifi_mode_t mode = wifi_start(settings_wifi_policy(), connecting_anim);
 
     // Color si no hay modos guardados: verde = WiFi de casa, morado = red propia, rojo = error
@@ -38,6 +56,10 @@ int main(void) {
 
     if (mode != WIFI_MODE_NONE) web_server_start(mode == WIFI_MODE_AP);
 
+    if (!time_reached(boot_flag_until)) {
+        show_boot_flag();  // por si se conectó tan rápido que no dio tiempo
+        sleep_until(boot_flag_until);
+    }
     control_start_preset();  // siempre empieza en el modo 1
 
     uint32_t last_log = 0;
