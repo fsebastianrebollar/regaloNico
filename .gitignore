@@ -1,0 +1,15 @@
+# Compilación
+build/
+build-*/
+
+# Entorno Python local (pyserial, mpremote, playwright)
+.venv/
+
+# Copia de la flash original: contiene credenciales WiFi
+backup/
+
+# Credenciales reales (usa src/wifi_secrets.example.h como plantilla)
+src/wifi_secrets.h
+
+.DS_Store
+.idea/
