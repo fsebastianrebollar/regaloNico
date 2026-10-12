@@ -3,16 +3,21 @@
 #include "pico/flash.h"
 #include "hardware/flash.h"
 #include "hardware/sync.h"
+#include "wifi_secrets.h"
 
 #define SETTINGS_OFFSET (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 #define SETTINGS_MAGIC  0x4E49434Fu  // "NICO"
 #define PRESETS_MAGIC   0x50524553u  // "PRES" (añadido después: se valida aparte)
+#define WIFI_MAGIC      0x57494649u  // "WIFI" (ídem)
 
 typedef struct {
     uint32_t magic;
-    uint32_t wifi_policy;
+    uint32_t old_wifi_policy;  // versión anterior: 0 = SEABASS si está, 1 = red propia
     uint32_t presets_magic;
     led_preset_t presets[NUM_PRESETS];
+    uint32_t wifi_magic;
+    char wifi_ssid[WIFI_SSID_MAX + 1];
+    char wifi_pass[WIFI_PASS_MAX + 1];
 } settings_t;
 
 static_assert(sizeof(settings_t) <= FLASH_PAGE_SIZE, "settings no cabe en una página");
@@ -25,10 +30,21 @@ void settings_init(void) {
     memset(&cur, 0, sizeof cur);
     cur.magic = SETTINGS_MAGIC;
     cur.presets_magic = PRESETS_MAGIC;
-    if (s->magic == SETTINGS_MAGIC && s->wifi_policy <= WIFI_POLICY_AP_ONLY)
-        cur.wifi_policy = s->wifi_policy;
-    if (s->magic == SETTINGS_MAGIC && s->presets_magic == PRESETS_MAGIC)
+    cur.wifi_magic = WIFI_MAGIC;
+    if (s->magic != SETTINGS_MAGIC) return;
+    if (s->presets_magic == PRESETS_MAGIC)
         memcpy(cur.presets, s->presets, sizeof cur.presets);
+    if (s->wifi_magic == WIFI_MAGIC) {
+        memcpy(cur.wifi_ssid, s->wifi_ssid, sizeof cur.wifi_ssid);
+        memcpy(cur.wifi_pass, s->wifi_pass, sizeof cur.wifi_pass);
+        cur.wifi_ssid[WIFI_SSID_MAX] = cur.wifi_pass[WIFI_PASS_MAX] = 0;
+    }
+#ifdef HOME_WIFI_SSID
+    else if (s->old_wifi_policy == 0) {
+        // Viene de la versión con WiFi de casa automática: se conserva esa red
+        settings_set_wifi(HOME_WIFI_SSID, HOME_WIFI_PASSWORD);
+    }
+#endif
 }
 
 static void write_sector(void *page) {
@@ -51,10 +67,14 @@ bool settings_save_if_dirty(void) {
     return true;
 }
 
-wifi_policy_t settings_wifi_policy(void) { return (wifi_policy_t)cur.wifi_policy; }
+const char *settings_wifi_ssid(void) { return cur.wifi_ssid; }
+const char *settings_wifi_pass(void) { return cur.wifi_pass; }
 
-void settings_set_wifi_policy(wifi_policy_t p) {
-    cur.wifi_policy = p;
+void settings_set_wifi(const char *ssid, const char *pass) {
+    memset(cur.wifi_ssid, 0, sizeof cur.wifi_ssid);
+    memset(cur.wifi_pass, 0, sizeof cur.wifi_pass);
+    strncpy(cur.wifi_ssid, ssid, WIFI_SSID_MAX);
+    strncpy(cur.wifi_pass, pass, WIFI_PASS_MAX);
     dirty = true;
 }
 

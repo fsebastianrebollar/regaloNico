@@ -1,11 +1,12 @@
 #pragma once
 #include <stdbool.h>
-#include "settings.h"
 
 typedef enum { WIFI_MODE_NONE, WIFI_MODE_STA, WIFI_MODE_AP } wifi_mode_t;
 
-// Con WIFI_POLICY_AUTO intenta conectarse a la WiFi de casa y, si no puede,
-// crea la red propia. Con WIFI_POLICY_AP_ONLY crea directamente la red propia.
-// Llama a on_progress periódicamente mientras intenta conectar.
-wifi_mode_t wifi_start(wifi_policy_t policy, void (*on_progress)(void));
+// Si hay una WiFi configurada (settings_wifi_ssid) se conecta a ella y lo
+// reintenta sin fin desde wifi_tick(); si no, crea la red propia.
+// No bloquea: el resto de la vitrina funciona mientras conecta.
+wifi_mode_t wifi_start(void);
+void wifi_tick(void);  // llamar a menudo desde el bucle principal
+bool wifi_connected(void);
 const char *wifi_ip(void);

@@ -9,7 +9,6 @@
 #include "settings.h"
 #include "mode_switch.h"
 
-#define BRI 40
 #define BOOT_FLAG_MS  5000
 #define BOOT_FLAG_BRI 160
 
@@ -24,18 +23,6 @@ static void show_boot_flag(void) {
     leds_show();
 }
 
-// Mientras conecta (pasada la bandera): un punto ámbar que recorre la tira
-static void connecting_anim(void) {
-    static uint32_t last, pos;
-    if (!time_reached(boot_flag_until)) return;
-    uint32_t now = to_ms_since_boot(get_absolute_time());
-    if (now - last < 150) return;
-    last = now;
-    for (int i = 0; i < NUM_LEDS; i++) leds_set(i, 0, 0, 0);
-    leds_set(pos++ % NUM_LEDS, BRI, BRI / 2, 0);
-    leds_show();
-}
-
 int main(void) {
     stdio_init_all();
     motor_init();
@@ -47,24 +34,25 @@ int main(void) {
     boot_flag_until = make_timeout_time_ms(BOOT_FLAG_MS);
     show_boot_flag();
 
-    wifi_mode_t mode = wifi_start(settings_wifi_policy(), connecting_anim);
+    wifi_mode_t mode = wifi_start();
 
-    // Color si no hay modos guardados: verde = WiFi de casa, morado = red propia, rojo = error
+    // Color si no hay modos guardados: verde = WiFi externa, morado = red propia, rojo = error
     if (mode == WIFI_MODE_STA)     { control.r = 0;   control.g = 255; control.b = 0; }
     else if (mode == WIFI_MODE_AP) { control.r = 255; control.g = 0;   control.b = 255; }
     else                           { control.r = 255; control.g = 0;   control.b = 0; }
 
     if (mode != WIFI_MODE_NONE) web_server_start(mode == WIFI_MODE_AP);
 
-    if (!time_reached(boot_flag_until)) {
-        show_boot_flag();  // por si se conectó tan rápido que no dio tiempo
-        sleep_until(boot_flag_until);
+    while (!time_reached(boot_flag_until)) {
+        wifi_tick();
+        sleep_ms(10);
     }
     control_start_preset();  // siempre empieza en el modo 1
 
     uint32_t last_log = 0;
     while (true) {
         control_tick();
+        wifi_tick();
         buttons_tick();
         mode_switch_tick();
 
@@ -81,7 +69,8 @@ int main(void) {
         if (now - last_log >= 10000) {
             last_log = now;
             printf("modo=%s ip=%s\n",
-                   mode == WIFI_MODE_STA ? "casa" : mode == WIFI_MODE_AP ? "red propia" : "error",
+                   mode == WIFI_MODE_STA ? (wifi_connected() ? settings_wifi_ssid() : "conectando")
+                   : mode == WIFI_MODE_AP ? "red propia" : "error",
                    wifi_ip());
         }
         sleep_ms(1);

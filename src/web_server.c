@@ -6,22 +6,29 @@
 //         /api/stop    -> tarjeta roja: para el motor y apaga las luces
 //         /api/button?id=N -> pulsación simulada del botón N (0..1)
 //         /api/preset?save=N | apply=N | del=N  (N = 0..4) -> modos de LED guardados
+//         /api/wifi?ssid=...&pass=... -> guarda la WiFi externa y reinicia
+//                                       (ssid vacío = red propia)
 #include "web_server.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <ctype.h>
 #include "pico/cyw43_arch.h"
 #include "lwip/tcp.h"
 #include "control.h"
 #include "buttons.h"
 #include "settings.h"
+#include "mode_switch.h"
+#include "wifi.h"
 #include "index_html.h"
 
 #define REQ_MAX 1024
+#define PATH_MAX_LEN 512
 #define HDR_MAX 256
 #define BODY_MAX 1024
 #define CRAZY_MS 15000
+#define WIFI_REBOOT_MS 1500
 
 typedef struct {
     struct tcp_pcb *pcb;
@@ -32,6 +39,7 @@ typedef struct {
     int hdr_left;             // bytes de cabecera pendientes de enviar
     int idle_polls;
     char body[BODY_MAX];      // respuestas dinámicas pequeñas
+    char path[PATH_MAX_LEN];  // aquí y no en la pila (las IRQ de lwIP la comparten)
     const uint8_t *data;      // cuerpo pendiente de enviar
     size_t data_left;
 } conn_t;
@@ -91,16 +99,31 @@ static void respond(conn_t *c, int code, const char *status, const char *ctype,
     send_more(c);
 }
 
+// Copia s a out como cadena JSON (sin comillas), escapando lo necesario
+static int json_str(char *out, size_t max, const char *s) {
+    size_t n = 0;
+    for (; *s && n + 7 < max; s++) {
+        unsigned char ch = (unsigned char)*s;
+        if (ch == '"' || ch == '\\') { out[n++] = '\\'; out[n++] = ch; }
+        else if (ch < 0x20) n += snprintf(out + n, max - n, "\\u%04x", ch);
+        else out[n++] = ch;
+    }
+    out[n] = 0;
+    return (int)n;
+}
+
 static int state_json(char *out, size_t max) {
     control_state_t s = control;
+    char ssid[WIFI_SSID_MAX * 6 + 8];
+    json_str(ssid, sizeof ssid, settings_wifi_ssid());
     int n = snprintf(out, max,
                      "{\"r\":%u,\"g\":%u,\"b\":%u,\"bri\":%u,\"fx\":\"%s\",\"motor\":%d,"
-                     "\"btn\":[{\"on\":%d,\"n\":%lu},{\"on\":%d,\"n\":%lu}],\"wifi\":\"%s\","
+                     "\"btn\":[{\"on\":%d,\"n\":%lu},{\"on\":%d,\"n\":%lu}],\"wifi\":\"%s\",\"ssid\":\"%s\","
                      "\"loco\":%lu,\"preset\":%d,\"presets\":[",
                      s.r, s.g, s.b, s.brightness, control_effect_name(s.effect), s.motor,
                      buttons[0].pressed, (unsigned long)buttons[0].presses,
                      buttons[1].pressed, (unsigned long)buttons[1].presses,
-                     settings_wifi_policy() == WIFI_POLICY_AUTO ? "auto" : "ap",
+                     settings_wifi_ssid()[0] ? "sta" : "ap", ssid,
                      (unsigned long)(control_crazy_left_ms() + 999) / 1000, s.preset);
     for (int i = 0; i < NUM_PRESETS && n < (int)max; i++) {
         const led_preset_t *p = settings_preset(i);
@@ -171,6 +194,40 @@ static void apply_preset_query(char *q) {
     }
 }
 
+// Decodifica %XX y '+' en el sitio
+static void url_decode(char *s) {
+    char *o = s;
+    for (; *s; s++) {
+        if (*s == '+') *o++ = ' ';
+        else if (*s == '%' && isxdigit((unsigned char)s[1]) && isxdigit((unsigned char)s[2])) {
+            char hex[3] = { s[1], s[2], 0 };
+            *o++ = (char)strtol(hex, NULL, 16);
+            s += 2;
+        } else *o++ = *s;
+    }
+    *o = 0;
+}
+
+// Devuelve NULL si todo va bien o el motivo del error
+static const char *apply_wifi_query(char *q) {
+    const char *ssid = "", *pass = "";
+    for (char *kv = strtok(q, "&"); kv; kv = strtok(NULL, "&")) {
+        char *eq = strchr(kv, '=');
+        if (!eq) continue;
+        *eq = 0;
+        url_decode(eq + 1);
+        if (!strcmp(kv, "ssid")) ssid = eq + 1;
+        else if (!strcmp(kv, "pass")) pass = eq + 1;
+    }
+    size_t ls = strlen(ssid), lp = strlen(pass);
+    if (ls > WIFI_SSID_MAX) return "El nombre de la WiFi es demasiado largo";
+    if (ls && lp && (lp < 8 || lp > WIFI_PASS_MAX)) return "La contraseña debe tener entre 8 y 63 caracteres";
+    settings_set_wifi(ssid, ls ? pass : "");
+    printf("WiFi configurada: %s\n", ls ? ssid : "(red propia)");
+    mode_switch_reboot_in(WIFI_REBOOT_MS);
+    return NULL;
+}
+
 static const char *find_header(const char *req, const char *name) {
     size_t n = strlen(name);
     for (const char *p = strstr(req, "\r\n"); p; p = strstr(p + 2, "\r\n"))
@@ -190,13 +247,15 @@ static void get_host(const char *req, char *buf, size_t max) {
 }
 
 static void handle_request(conn_t *c) {
-    char method[8], path[256], host[64];
-    if (sscanf(c->req, "%7s %255s", method, path) != 2) {
+    char method[8], host[64], *path = c->path;
+    if (sscanf(c->req, "%7s %511s", method, path) != 2) {
         respond(c, 400, "Bad Request", "text/plain", "bad request", 11, NULL);
         return;
     }
     get_host(c->req, host, sizeof host);
-    if (strncmp(path, "/api/state", 10) != 0)  // la web lo consulta continuamente
+    if (!strncmp(path, "/api/wifi", 9))  // sin la contraseña
+        printf("HTTP %s /api/wifi (host %s)\n", method, host);
+    else if (strncmp(path, "/api/state", 10) != 0)  // la web lo consulta continuamente
         printf("HTTP %s %s (host %s)\n", method, path, host);
 
     // En la red propia, cualquier otro dominio (detección de portal cautivo
@@ -234,6 +293,12 @@ static void handle_request(conn_t *c) {
         if (query) apply_preset_query(query);
         int n = state_json(c->body, BODY_MAX);
         respond(c, 200, "OK", "application/json", c->body, n, NULL);
+    } else if (!strcmp(path, "/api/wifi")) {
+        char tmp[1] = "";
+        const char *e = apply_wifi_query(query ? query : tmp);
+        int n = e ? snprintf(c->body, BODY_MAX, "{\"ok\":false,\"error\":\"%s\"}", e)
+                  : snprintf(c->body, BODY_MAX, "{\"ok\":true}");
+        respond(c, e ? 400 : 200, e ? "Bad Request" : "OK", "application/json", c->body, n, NULL);
     } else {
         respond(c, 404, "Not Found", "text/plain", "not found", 9, NULL);
     }

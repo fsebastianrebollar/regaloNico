@@ -120,6 +120,25 @@ h1 span{display:block;font-size:18px;color:var(--amarillo);text-shadow:0 2px 0 r
 .final button{border:0;border-radius:14px;padding:14px 20px;font-size:16px;font-weight:900;cursor:pointer;background:var(--amarillo);color:#3a2a00;margin:4px}
 .final button.sec{background:rgba(255,255,255,.12);color:#fff}
 .modal.fiesta{animation:disco .25s steps(1) infinite}
+.herram{position:absolute;top:6px;right:0;z-index:2;width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.herram:active{transform:scale(.92)}
+.ajustes{text-align:left}
+.ajustes .titulo{text-align:center;margin-bottom:12px}
+.ajustes .ahora{background:rgba(0,0,0,.3);border-radius:14px;padding:10px 12px;font-size:14px;color:var(--mut);margin-bottom:14px}
+.ajustes .ahora b{color:#fff}
+.ajustes label{display:block;font-size:13px;font-weight:800;color:var(--mut);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.5px}
+.ajustes input{width:100%;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;border-radius:12px;padding:12px;font-size:16px;outline:none}
+.ajustes input:focus{border-color:var(--amarillo)}
+.ajustes .ver{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px;color:var(--mut);text-transform:none;letter-spacing:0;font-weight:600}
+.ajustes .ver input{width:auto}
+.ajustes .botones{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.ajustes .botones button{border:0;border-radius:14px;padding:14px;font-size:16px;font-weight:900;cursor:pointer;background:var(--amarillo);color:#3a2a00}
+.ajustes .botones button.sec{background:rgba(255,255,255,.12);color:#fff}
+.ajustes .botones button:disabled{opacity:.5}
+.ajustes .nota{font-size:13px;color:var(--mut);margin-top:14px;line-height:1.4}
+.ajustes .msg{font-size:14px;font-weight:700;margin-top:12px;min-height:18px}
+.ajustes .msg.mal{color:#fca5a5}
+.ajustes .msg.bien{color:#86efac}
 @keyframes disco{0%{background:rgba(123,47,247,.9)}25%{background:rgba(241,7,163,.9)}50%{background:rgba(255,138,0,.9)}75%{background:rgba(0,200,255,.9)}}
 
 /* ---------- Tarjetas ---------- */
@@ -214,6 +233,7 @@ input[type=range]::-moz-range-thumb{width:30px;height:30px;border:0;background:u
 </svg>
 
 <header class="hero">
+  <button class="herram" id="herram" aria-label="Ajustes WiFi">🔧</button>
   <div class="estrellas">★★</div>
   <h1>La vitrina de Nico<span>¡Campeones del Mundo!</span></h1>
 
@@ -250,6 +270,26 @@ input[type=range]::-moz-range-thumb{width:30px;height:30px;border:0;background:u
 
 <div class="modal" id="modal">
   <div class="quiz" id="quiz"></div>
+</div>
+
+<div class="modal" id="modalWifi">
+  <form class="quiz ajustes" id="formWifi" autocomplete="off">
+    <button type="button" class="cerrar" id="cerrarWifi" aria-label="Cerrar">✕</button>
+    <div class="titulo">🔧 Ajustes WiFi</div>
+    <div class="ahora" id="wifiAhora"></div>
+    <label for="ssid">Nombre de la WiFi</label>
+    <input id="ssid" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Mi WiFi">
+    <label for="pass">Contraseña</label>
+    <input id="pass" type="password" maxlength="63" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Vacía si es una WiFi abierta">
+    <label class="ver"><input type="checkbox" id="verPass"> Ver contraseña</label>
+    <div class="botones">
+      <button type="submit" id="okWifi">Conectar a esta WiFi</button>
+      <button type="button" class="sec" id="propia">Volver a la red propia</button>
+    </div>
+    <div class="msg" id="msgWifi"></div>
+    <div class="nota">La vitrina se reinicia al guardar. Si no encuentra la WiFi, lo sigue intentando y los botones funcionan igual.
+      Para volver a la red propia <b>cumplenico</b> mantén pulsados los dos botones de la vitrina 5 segundos.</div>
+  </form>
 </div>
 
 <section class="card">
@@ -516,6 +556,49 @@ function finTest(){
   }
 }
 $('loco').onclick=abrirTest;
+
+/* ---------- Ajustes WiFi ---------- */
+const esc=t=>t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+function pintarWifi(){
+  if(!S)return;
+  $('wifiAhora').innerHTML=S.wifi==='sta'
+    ?'Ahora conectada a la WiFi <b>'+esc(S.ssid)+'</b>. Entra con la IP que le dé el router.'
+    :'Ahora usa su red propia <b>cumplenico</b> (entra en <b>cumplenico.com</b>).';
+  $('propia').style.display=S.wifi==='sta'?'':'none';
+}
+function abrirWifi(){
+  pintarWifi();
+  $('ssid').value=S&&S.wifi==='sta'?S.ssid:'';$('pass').value='';
+  $('msgWifi').textContent='';$('msgWifi').className='msg';
+  $('okWifi').disabled=$('propia').disabled=false;
+  $('modalWifi').className='modal on';
+}
+function cerrarWifi(){$('modalWifi').className='modal'}
+function guardarWifi(ssid,pass){
+  const m=$('msgWifi');
+  $('okWifi').disabled=$('propia').disabled=true;
+  m.className='msg';m.textContent='Guardando…';
+  fetch('/api/wifi?'+new URLSearchParams({ssid,pass})).then(r=>r.json()).then(j=>{
+    if(!j.ok)throw new Error(j.error);
+    m.className='msg bien';
+    m.textContent=ssid?'¡Guardado! La vitrina se reinicia y se conecta a «'+ssid+'». Conéctate tú también a esa WiFi.'
+                      :'¡Guardado! La vitrina se reinicia con su red propia cumplenico.';
+  }).catch(e=>{
+    m.className='msg mal';m.textContent=e.message&&e.message!=='Failed to fetch'?e.message:'No se ha podido guardar';
+    $('okWifi').disabled=$('propia').disabled=false;
+  });
+}
+$('herram').onclick=abrirWifi;
+$('cerrarWifi').onclick=cerrarWifi;
+$('verPass').onchange=e=>{$('pass').type=e.target.checked?'text':'password'};
+$('formWifi').onsubmit=e=>{
+  e.preventDefault();
+  const ssid=$('ssid').value.trim(),pass=$('pass').value,m=$('msgWifi');
+  if(!ssid){m.className='msg mal';m.textContent='Escribe el nombre de la WiFi';return}
+  if(pass&&pass.length<8){m.className='msg mal';m.textContent='La contraseña debe tener al menos 8 caracteres';return}
+  guardarWifi(ssid,pass);
+};
+$('propia').onclick=()=>guardarWifi('','');
 
 /* ---------- Tarjeta roja ---------- */
 const BRAZO_ARBITRO='<svg viewBox="0 0 200 330" aria-hidden="true">'

@@ -15,20 +15,21 @@ control con temática de fútbol.
 | GP14 | Botón 1 (a 3,3 V al pulsar): siguiente modo de luces |
 | GP15 | Botón 2 (a 3,3 V al pulsar): escalera del motor |
 
-Los dos botones a la vez durante 5 s alternan el modo WiFi
-(automático / solo red propia) y reinician.
+Los dos botones a la vez durante 5 s borran la WiFi configurada, vuelven a la
+red propia y reinician.
 
 ## WiFi
 
-- **Automático:** se conecta a la WiFi de casa; si no puede, crea la red
-  `cumplenico`. En casa la web va por la IP que asigne el router.
-- **Red propia:** red `cumplenico`; la web se abre en `http://cumplenico.com`
-  (DNS propio + portal cautivo).
+- **Red propia (por defecto):** red `cumplenico`; la web se abre en
+  `http://cumplenico.com` (DNS propio + portal cautivo).
+- **WiFi externa:** se configura desde la web (icono 🔧) y queda guardada en
+  flash. Si la red no está, lo reintenta sin parar mientras todo lo demás
+  funciona. La web va por la IP que asigne el router.
 
 ## Compilar y grabar
 
 ```sh
-cp src/wifi_secrets.example.h src/wifi_secrets.h   # y edita las credenciales
+cp src/wifi_secrets.example.h src/wifi_secrets.h   # credenciales de la red propia
 export PICO_SDK_PATH=~/pico/pico-sdk
 export PICO_TOOLCHAIN_PATH=~/pico/toolchain/arm-gnu-toolchain-14.3.rel1-darwin-arm64-arm-none-eabi
 cmake -S . -B build -G Ninja
@@ -41,9 +42,9 @@ firmware al compilar.
 ## Estructura
 
 - `src/main.c`: arranque y bucle principal
-- `src/wifi.c`: WiFi de casa / red propia
+- `src/wifi.c`: red propia / WiFi externa con reintentos
 - `src/web_server.c`: servidor HTTP y API (`/api/state`, `/api/set`, `/api/preset`, `/api/button`, `/api/loco`, `/api/stop`)
 - `src/control.c`: efectos de luces, rampa del motor, modos guardados, modo loco
 - `src/settings.c`: ajustes persistentes en el último sector de la flash
-- `src/buttons.c`, `src/mode_switch.c`: botones y cambio de modo WiFi
+- `src/buttons.c`, `src/mode_switch.c`: botones y vuelta a la red propia
 - `lib/dhcpserver`, `lib/dnsserver`: de los ejemplos oficiales `pico-examples`

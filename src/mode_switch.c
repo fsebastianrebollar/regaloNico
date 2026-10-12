@@ -23,7 +23,23 @@ static void blink_and_reboot(uint8_t r, uint8_t g, uint8_t b) {
     while (true) tight_loop_contents();
 }
 
+static bool reboot_pending;
+static absolute_time_t reboot_at;
+
+void mode_switch_reboot_in(uint32_t ms) {
+    reboot_at = make_timeout_time_ms(ms);
+    reboot_pending = true;
+}
+
 void mode_switch_tick(void) {
+    if (reboot_pending && time_reached(reboot_at)) {
+        if (!settings_save_if_dirty()) printf("ERROR guardando ajustes en flash\n");
+        printf("Reiniciando...\n");
+        sleep_ms(50);
+        if (settings_wifi_ssid()[0]) blink_and_reboot(0, BAR_BRI, 0);  // verde = WiFi externa
+        blink_and_reboot(BAR_BRI, 0, BAR_BRI);                         // morado = red propia
+    }
+
     static bool holding;
     static uint32_t start;
     uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -48,13 +64,10 @@ void mode_switch_tick(void) {
         return;
     }
 
-    wifi_policy_t next = settings_wifi_policy() == WIFI_POLICY_AUTO ? WIFI_POLICY_AP_ONLY : WIFI_POLICY_AUTO;
-    settings_set_wifi_policy(next);
+    if (settings_wifi_ssid()[0]) settings_set_wifi("", "");
     bool ok = settings_save_if_dirty();
-    printf("Modo WiFi -> %s (%s). Reiniciando...\n",
-           next == WIFI_POLICY_AUTO ? "automatico" : "solo red propia", ok ? "guardado" : "ERROR al guardar");
+    printf("WiFi -> red propia (%s). Reiniciando...\n", ok ? "guardado" : "ERROR al guardar");
     sleep_ms(50);  // que salga el mensaje por USB
     if (!ok) blink_and_reboot(BAR_BRI, 0, 0);
-    if (next == WIFI_POLICY_AUTO) blink_and_reboot(0, BAR_BRI, 0);
-    else                          blink_and_reboot(BAR_BRI, 0, BAR_BRI);
+    blink_and_reboot(BAR_BRI, 0, BAR_BRI);  // morado = red propia
 }

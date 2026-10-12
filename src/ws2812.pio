@@ -1,8 +1,10 @@
 .program ws2812
 .side_set 1
-.define public T1 3
-.define public T2 3
-.define public T3 4
+; Tiempos (en ciclos de 125 ns): un 0 es 250 ns alto, un 1 es 875 ns alto.
+; Con 375 ns el WS2815 a veces leía los 0 como 1 y los colores se iban a blanco.
+.define public T1 2
+.define public T2 5
+.define public T3 3
 .wrap_target
 bitloop:
     out x, 1       side 0 [T3 - 1]
