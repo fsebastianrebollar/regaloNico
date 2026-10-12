@@ -97,6 +97,9 @@ h1 span{display:block;font-size:18px;color:var(--amarillo);text-shadow:0 2px 0 r
 @keyframes arco{to{background-position:300% 0}}
 .modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,20,9,.92);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .modal.on{display:flex}
+.modal{overscroll-behavior:contain;touch-action:none}
+.modal .quiz{touch-action:pan-y;overscroll-behavior:contain}
+body.bloq{position:fixed;left:0;right:0;overflow:hidden}
 .quiz{width:100%;max-width:440px;background:linear-gradient(180deg,#0f4a24,#0a3219);border:2px solid rgba(255,255,255,.18);border-radius:24px;padding:20px 18px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.6);position:relative}
 .cerrar{position:absolute;top:10px;right:12px;border:0;background:rgba(255,255,255,.1);color:#fff;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer}
 .quiz .titulo{font:900 italic 22px "Arial Black",Impact,system-ui;text-transform:uppercase;color:var(--amarillo)}
@@ -359,7 +362,7 @@ const $=id=>document.getElementById(id);
 const COLORES=[['#c60b1e','Rojo España'],['#ffc400','Amarillo'],['#ffffff','Blanco'],['#00b050','Césped'],['#0050ff','Azul'],['#ff6a00','Naranja'],['#9b30ff','Morado'],['#00e5ff','Cian']];
 const FXN={spain:'España',disco:'Disco',solid:'Fijo',rainbow:'Fiesta',chase:'La ola',breathe:'Respira',heartbeat:'Latido',off:'Apagado'};
 
-let S=null,sel=0,pending={},timer=null,slotsKey='',fiesta=null;
+let S=null,sel=0,pending={},timer=null,slotsKey='';
 
 /* ---------- Comunicación ---------- */
 function api(url){return fetch(url).then(r=>r.json()).then(show).catch(err)}
@@ -387,6 +390,7 @@ function camiseta(fill,num,extra=''){
 function show(s){
   S=s;
   if(s.ota)pintarOta();
+  pintarGol();
   $('st').className='estado';$('st').lastChild.textContent='Vitrina conectada';
   document.querySelectorAll('#fx .chip').forEach(b=>b.classList.toggle('on',b.dataset.fx===s.fx));
   const c=toHex(s.r,s.g,s.b);
@@ -447,19 +451,15 @@ function confeti(){
   document.body.appendChild(g);setTimeout(()=>g.remove(),1700);
   if(navigator.vibrate)navigator.vibrate([80,60,80,60,200]);
 }
-$('gol').onclick=()=>{
-  confeti();
-  if(!S)return;
-  if(!fiesta)fiesta={fx:S.fx,r:S.r,g:S.g,b:S.b,bri:S.bri,motor:S.motor,preset:S.preset};
-  else clearTimeout(fiesta.t);
-  $('gol').classList.add('on');
-  send({fx:'spain',bri:255,motor:50});
-  fiesta.t=setTimeout(()=>{
-    const f=fiesta;fiesta=null;$('gol').classList.remove('on');
-    if(f.preset>=0){api('/api/preset?apply='+f.preset);send({bri:f.bri,motor:f.motor})}
-    else send({fx:f.fx,r:f.r,g:f.g,b:f.b,bri:f.bri,motor:f.motor});
-  },7000);
-};
+// El ¡gol! lo hace la propia vitrina (7 s y vuelve a como estaba); también
+// lo lanza Alexa con "enciende España", y entonces aquí sale el confeti solo
+let golAntes=0;
+$('gol').onclick=()=>{confeti();golAntes=1;api('/api/gol')};
+function pintarGol(){
+  $('gol').classList.toggle('on',S.gol>0);
+  if(S.gol>0&&!golAntes)confeti();
+  golAntes=S.gol;
+}
 
 
 /* ---------- Test loco ---------- */
@@ -658,6 +658,16 @@ $('updArchivo').onchange=e=>{
   x.send(f);
 };
 
+/* ---------- Con un menú abierto, la página de fondo no se mueve ---------- */
+let scrollY0=0;
+function bloquearFondo(){
+  const abierto=!!document.querySelector('.modal.on'),b=document.body;
+  if(abierto===b.classList.contains('bloq'))return;
+  if(abierto){scrollY0=window.scrollY;b.style.top=-scrollY0+'px';b.classList.add('bloq')}
+  else{b.classList.remove('bloq');b.style.top='';window.scrollTo(0,scrollY0)}
+}
+document.querySelectorAll('.modal').forEach(m=>new MutationObserver(bloquearFondo).observe(m,{attributes:true,attributeFilter:['class']}));
+
 $('herram').onclick=abrirWifi;
 $('cerrarWifi').onclick=cerrarWifi;
 $('verPass').onchange=e=>{$('pass').type=e.target.checked?'text':'password'};
@@ -693,7 +703,6 @@ function sacarTarjeta(){
 }
 $('roja').onclick=()=>{
   sacarTarjeta();
-  if(fiesta){clearTimeout(fiesta.t);fiesta=null;$('gol').classList.remove('on')}  // corta el ¡GOOOL!
   clearTimeout(timer);timer=null;pending={};
   const r=$('roja');r.classList.remove('on');void r.offsetWidth;r.classList.add('on');
   if(navigator.vibrate)navigator.vibrate(200);

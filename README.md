@@ -26,6 +26,16 @@ red propia y reinician.
   flash. Si la red no está, lo reintenta sin parar mientras todo lo demás
   funciona. La web va por la IP que asigne el router.
 
+## Alexa
+
+Con WiFi externa, la vitrina se anuncia como una bombilla Philips Hue llamada
+**España** (no hace falta skill). En la app de Alexa: *Dispositivos > + >
+Añadir dispositivo > Luz > Philips Hue* o simplemente "Alexa, busca
+dispositivos".
+
+- "Alexa, enciende España" → ¡gol! (bandera y la copa girando 7 s)
+- "Alexa, apaga España" → lo corta
+
 ## Actualizaciones
 
 La flash está dividida en dos particiones (A/B): la versión nueva se escribe en
@@ -75,6 +85,7 @@ firmware al compilar.
 - `src/web_server.c`: servidor HTTP y API (`/api/state`, `/api/set`, `/api/preset`, `/api/button`, `/api/loco`, `/api/stop`, `/api/wifi`, `/api/ota`, `/api/update`)
 - `src/control.c`: efectos de luces, rampa del motor, modos guardados, modo loco
 - `src/settings.c`: ajustes persistentes en el último sector de la flash
+- `src/alexa.c`: emulación de Hue para Alexa (SSDP + API)
 - `src/ota.c`, `src/https_get.c`: actualizaciones (GitHub por HTTPS y subida manual)
 - `src/buttons.c`, `src/mode_switch.c`: botones y vuelta a la red propia
 - `lib/dhcpserver`, `lib/dnsserver`: de los ejemplos oficiales `pico-examples`

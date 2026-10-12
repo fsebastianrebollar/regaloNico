@@ -42,6 +42,7 @@ add_executable(regalo_nico
     src/mode_switch.c
     src/ota.c
     src/https_get.c
+    src/alexa.c
     lib/dhcpserver/dhcpserver.c
     lib/dnsserver/dnsserver.c
 )

@@ -10,6 +10,8 @@
 //                                       (ssid vacío = red propia)
 //         /api/ota?check=1 | install=1 -> busca / instala la actualización de GitHub
 //         POST /api/update (cuerpo = .uf2) -> actualización manual
+//         /api/gol      -> ¡gol! 7 s (bandera y la copa girando)
+//         /description.xml y /api/<usuario>/lights... -> Alexa (emula un Hue)
 #include "web_server.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +26,7 @@
 #include "mode_switch.h"
 #include "wifi.h"
 #include "ota.h"
+#include "alexa.h"
 #include "index_html.h"
 
 #define REQ_MAX 1024
@@ -37,6 +40,7 @@ typedef struct {
     struct tcp_pcb *pcb;
     char req[REQ_MAX];
     int req_len;
+    int hdr_len;              // longitud de la cabecera (0 = aún no ha llegado entera)
     bool responded;
     char hdr[HDR_MAX];
     int hdr_left;             // bytes de cabecera pendientes de enviar
@@ -125,12 +129,13 @@ static int state_json(char *out, size_t max) {
     int n = snprintf(out, max,
                      "{\"r\":%u,\"g\":%u,\"b\":%u,\"bri\":%u,\"fx\":\"%s\",\"motor\":%d,"
                      "\"btn\":[{\"on\":%d,\"n\":%lu},{\"on\":%d,\"n\":%lu}],\"wifi\":\"%s\",\"ssid\":\"%s\","
-                     "\"loco\":%lu,\"preset\":%d,\"presets\":[",
+                     "\"loco\":%lu,\"gol\":%lu,\"preset\":%d,\"presets\":[",
                      s.r, s.g, s.b, s.brightness, control_effect_name(s.effect), s.motor,
                      buttons[0].pressed, (unsigned long)buttons[0].presses,
                      buttons[1].pressed, (unsigned long)buttons[1].presses,
                      settings_wifi_ssid()[0] ? "sta" : "ap", ssid,
-                     (unsigned long)(control_crazy_left_ms() + 999) / 1000, s.preset);
+                     (unsigned long)(control_crazy_left_ms() + 999) / 1000,
+                     (unsigned long)(control_party_left_ms(PARTY_GOL) + 999) / 1000, s.preset);
     for (int i = 0; i < NUM_PRESETS && n < (int)max; i++) {
         const led_preset_t *p = settings_preset(i);
         const char *sep = i ? "," : "";
@@ -317,6 +322,10 @@ static void handle_request(conn_t *c) {
         control_crazy_start(CRAZY_MS);
         int n = state_json(c->body, BODY_MAX);
         respond(c, 200, "OK", "application/json", c->body, n, NULL);
+    } else if (!strcmp(path, "/api/gol")) {
+        control_gol_start(ALEXA_GOL_MS);
+        int n = state_json(c->body, BODY_MAX);
+        respond(c, 200, "OK", "application/json", c->body, n, NULL);
     } else if (!strcmp(path, "/api/stop")) {
         control_stop_all();
         int n = state_json(c->body, BODY_MAX);
@@ -348,7 +357,11 @@ static void handle_request(conn_t *c) {
             c->up_left = (uint32_t)len;
         }
     } else {
-        respond(c, 404, "Not Found", "text/plain", "not found", 9, NULL);
+        int xml, n = alexa_http(method, path, c->hdr_len ? c->req + c->hdr_len : "", c->body, BODY_MAX, &xml);
+        if (n >= 0)
+            respond(c, 200, "OK", xml ? "text/xml" : "application/json", c->body, MIN(n, BODY_MAX - 1), NULL);
+        else
+            respond(c, 404, "Not Found", "text/plain", "not found", 9, NULL);
     }
 }
 
@@ -375,12 +388,21 @@ static err_t on_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
         pbuf_copy_partial(p, c->req + c->req_len, n, 0);
         c->req_len += n;
         c->req[c->req_len] = 0;
-        char *end = strstr(c->req, "\r\n\r\n");
-        if (end) {
-            c->req_len = (int)(end + 4 - c->req);  // solo la cabecera; el cuerpo va aparte
-            c->req[c->req_len] = 0;
+        if (!c->hdr_len) {
+            char *end = strstr(c->req, "\r\n\r\n");
+            if (end) c->hdr_len = (int)(end + 4 - c->req);
+        }
+        if (c->hdr_len && !strncmp(c->req, "POST /api/update", 16)) {
+            // El .uf2 no cabe en memoria: se va escribiendo según llega
+            int hl = c->hdr_len;
+            c->req[hl] = 0;
             handle_request(c);
-            if (c->upload) upload_feed(c, p, (u16_t)(c->req_len - prev));
+            if (c->upload) upload_feed(c, p, (u16_t)(hl - prev));
+        } else if (c->hdr_len) {
+            // Cuerpos pequeños (Alexa manda JSON con PUT): se espera a tenerlo entero
+            const char *cl = find_header(c->req, "Content-Length");
+            long len = cl ? strtol(cl, NULL, 10) : 0;
+            if (c->req_len - c->hdr_len >= len || c->req_len >= REQ_MAX - 1) handle_request(c);
         } else if (c->req_len >= REQ_MAX - 1) {
             handle_request(c);
         }

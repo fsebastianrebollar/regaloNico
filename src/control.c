@@ -175,43 +175,56 @@ static void render_leds(uint32_t t_ms) {
     leds_show();
 }
 
+// Fiestas temporales (modo loco, ¡gol!): guardan el estado y lo restauran al acabar
 static struct {
-    bool on;
+    party_t kind;
     absolute_time_t until;
     control_state_t saved;
 } crazy;
 
-void control_crazy_start(uint32_t ms) {
-    if (!crazy.on) crazy.saved = control;  // si ya estaba activo, solo se alarga
-    crazy.on = true;
+static void party_start(party_t kind, led_effect_t fx, int motor, uint32_t ms) {
+    if (crazy.kind == PARTY_NONE) crazy.saved = control;  // si ya había una, se sustituye
+    crazy.kind = kind;
     crazy.until = make_timeout_time_ms(ms);
-    control.effect = FX_DISCO;
+    control.effect = fx;
     control.brightness = 255;
-    control.motor = 100;
+    control.motor = motor;
 }
 
-uint32_t control_crazy_left_ms(void) {
-    if (!crazy.on) return 0;
+void control_crazy_start(uint32_t ms) { party_start(PARTY_CRAZY, FX_DISCO, 100, ms); }
+void control_gol_start(uint32_t ms)   { party_start(PARTY_GOL, FX_SPAIN, 50, ms); }
+
+uint32_t control_party_left_ms(party_t kind) {
+    if (crazy.kind != kind) return 0;
     int64_t us = absolute_time_diff_us(get_absolute_time(), crazy.until);
     return us > 0 ? (uint32_t)(us / 1000) : 0;
 }
 
-void control_stop_all(void) {
-    crazy.on = false;
-    control.motor = 0;
-    control.motor_step = 0;  // el botón 2 vuelve a empezar desde 0
-    control_apply_preset(PRESET_OFF);  // el botón 1 sigue en el modo 1
-}
+uint32_t control_crazy_left_ms(void) { return control_party_left_ms(PARTY_CRAZY); }
 
-static void crazy_tick(void) {
-    if (!crazy.on || !time_reached(crazy.until)) return;
-    crazy.on = false;
+static void party_end(void) {
+    crazy.kind = PARTY_NONE;
     control_state_t s = crazy.saved;
     control.r = s.r; control.g = s.g; control.b = s.b;
     control.effect = s.effect;
     control.brightness = s.brightness;
     control.motor = s.motor;
     control.preset = s.preset;
+}
+
+void control_party_stop(party_t kind) {
+    if (crazy.kind == kind) party_end();
+}
+
+void control_stop_all(void) {
+    crazy.kind = PARTY_NONE;
+    control.motor = 0;
+    control.motor_step = 0;  // el botón 2 vuelve a empezar desde 0
+    control_apply_preset(PRESET_OFF);  // el botón 1 sigue en el modo 1
+}
+
+static void crazy_tick(void) {
+    if (crazy.kind != PARTY_NONE && time_reached(crazy.until)) party_end();
 }
 
 void control_tick(void) {

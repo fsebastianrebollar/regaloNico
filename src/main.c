@@ -9,6 +9,7 @@
 #include "settings.h"
 #include "mode_switch.h"
 #include "ota.h"
+#include "alexa.h"
 
 #define BOOT_FLAG_MS  5000
 #define BOOT_FLAG_BRI 160
@@ -56,6 +57,7 @@ int main(void) {
         control_tick();
         wifi_tick();
         ota_tick();
+        alexa_tick();
         buttons_tick();
         mode_switch_tick();
 

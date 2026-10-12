@@ -15,4 +15,7 @@
 // la ventana TCP tiene que ser mayor o se queda atascado
 #undef TCP_WND
 #define TCP_WND 32768
+
+// Multicast para que Alexa encuentre la vitrina (SSDP)
+#define LWIP_IGMP 1
 #endif

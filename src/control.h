@@ -29,10 +29,14 @@ void control_next_preset(void);      // botón 1: modos guardados y luego apagad
 void control_start_preset(void);     // al arrancar: modo 1 (o el primero guardado)
 void control_motor_stair(void);      // botón 2
 
-// Modo loco: discoteca a tope y motor al 100 % durante ms; luego todo vuelve
-// a como estaba. Lo controla la propia Pico (no depende de la web).
-void control_crazy_start(uint32_t ms);
-uint32_t control_crazy_left_ms(void);  // 0 si no está activo
+// Fiestas temporales: durante ms cambian luces y motor y luego todo vuelve a
+// como estaba. Las controla la propia Pico (no dependen de la web).
+typedef enum { PARTY_NONE, PARTY_CRAZY, PARTY_GOL } party_t;
+void control_crazy_start(uint32_t ms);  // modo loco: discoteca a tope y motor al 100 %
+void control_gol_start(uint32_t ms);    // ¡gol!: bandera de España y la copa girando
+uint32_t control_party_left_ms(party_t kind);  // 0 si no está activa
+uint32_t control_crazy_left_ms(void);
+void control_party_stop(party_t kind);  // la termina ya (si es esa) y restaura
 
 // Tarjeta roja: cancela el modo loco, para el motor y apaga las luces
 void control_stop_all(void);
