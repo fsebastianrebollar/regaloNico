@@ -122,7 +122,14 @@ h1 span{display:block;font-size:18px;color:var(--amarillo);text-shadow:0 2px 0 r
 .modal.fiesta{animation:disco .25s steps(1) infinite}
 .herram{position:absolute;top:6px;right:0;z-index:2;width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .herram:active{transform:scale(.92)}
-.ajustes{text-align:left}
+.ajustes{text-align:left;max-height:calc(100vh - 32px);overflow-y:auto}
+.ajustes .sep{height:2px;background:rgba(255,255,255,.12);margin:20px -18px 16px}
+.ajustes .titulo2{font:900 italic 18px "Arial Black",Impact,system-ui;text-transform:uppercase;color:var(--amarillo);text-align:center;margin-bottom:12px}
+.ajustes .barra{height:12px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden;margin:-4px 0 12px;display:none}
+.ajustes .barra.on{display:block}
+.ajustes .barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--amarillo),#4ade80);transition:width .3s}
+.ajustes .subir{display:block;text-align:center;border-radius:14px;padding:14px;font-size:16px;font-weight:900;cursor:pointer;background:rgba(255,255,255,.12);color:#fff;margin:0;text-transform:none;letter-spacing:0}
+.ajustes .subir.off{opacity:.5;pointer-events:none}
 .ajustes .titulo{text-align:center;margin-bottom:12px}
 .ajustes .ahora{background:rgba(0,0,0,.3);border-radius:14px;padding:10px 12px;font-size:14px;color:var(--mut);margin-bottom:14px}
 .ajustes .ahora b{color:#fff}
@@ -289,6 +296,17 @@ input[type=range]::-moz-range-thumb{width:30px;height:30px;border:0;background:u
     <div class="msg" id="msgWifi"></div>
     <div class="nota">La vitrina se reinicia al guardar. Si no encuentra la WiFi, lo sigue intentando y los botones funcionan igual.
       Para volver a la red propia <b>cumplenico</b> mantén pulsados los dos botones de la vitrina 5 segundos.</div>
+
+    <div class="sep"></div>
+    <div class="titulo2">⬆️ Actualización</div>
+    <div class="ahora" id="updInfo"></div>
+    <div class="barra" id="updBarra"><i></i></div>
+    <div class="botones">
+      <button type="button" id="updInstalar">Instalar</button>
+      <button type="button" class="sec" id="updBuscar">Buscar actualizaciones</button>
+      <label class="subir" id="updSubir">📁 Subir archivo .uf2<input type="file" id="updArchivo" accept=".uf2" hidden></label>
+    </div>
+    <div class="msg" id="updMsg"></div>
   </form>
 </div>
 
@@ -367,6 +385,7 @@ function camiseta(fill,num,extra=''){
 /* ---------- Pintar estado ---------- */
 function show(s){
   S=s;
+  if(s.ota)pintarOta();
   $('st').className='estado';$('st').lastChild.textContent='Vitrina conectada';
   document.querySelectorAll('#fx .chip').forEach(b=>b.classList.toggle('on',b.dataset.fx===s.fx));
   const c=toHex(s.r,s.g,s.b);
@@ -588,6 +607,56 @@ function guardarWifi(ssid,pass){
     $('okWifi').disabled=$('propia').disabled=false;
   });
 }
+/* ---------- Actualización ---------- */
+let fwInicial=null,subiendo=null;
+function pintarOta(){
+  const o=S.ota,info=$('updInfo'),m=$('updMsg');
+  if(fwInicial===null)fwInicial=o.fw;
+  else if(o.fw!==fwInicial){location.reload();return}  // ya arrancó la versión nueva: recarga la web
+  const ocupado=['checking','downloading','uploading','done'].includes(o.st)||!!subiendo;
+  const externa=S.wifi==='sta';
+  let t='Versión instalada: <b>v'+o.fw+'</b>.';
+  if(o.st==='checking')t+=' Buscando en internet…';
+  else if(o.st==='uptodate')t+=' Es la última ✅';
+  else if(o.st==='available')t+=' <b>¡Hay una nueva: v'+o.v+'!</b> 🎉';
+  else if(o.st==='downloading')t='Descargando la v'+o.v+'… '+o.p+' %';
+  else if(o.st==='uploading'||subiendo)t='Instalando el archivo… '+(subiendo?subiendo.p:o.p)+' %';
+  else if(o.st==='done')t='¡Instalada! La vitrina se reinicia y vuelve en unos segundos…';
+  else if(!externa)t+=' Para buscar actualizaciones, conéctala a una WiFi con internet.';
+  info.innerHTML=t;
+  const pct=subiendo?subiendo.p:o.p;
+  $('updBarra').className='barra'+(o.st==='downloading'||o.st==='uploading'||subiendo?' on':'');
+  $('updBarra').firstChild.style.width=pct+'%';
+  $('updInstalar').style.display=o.st==='available'?'':'none';
+  $('updInstalar').textContent='Instalar la v'+o.v;
+  $('updBuscar').style.display=externa?'':'none';
+  $('updBuscar').disabled=$('updInstalar').disabled=ocupado;
+  $('updSubir').classList.toggle('off',ocupado);
+  if(o.st==='error'&&!subiendo){m.className='msg mal';m.textContent=o.err}
+  else if(m.className==='msg mal'&&!subiendo)m.textContent='';
+}
+$('updBuscar').onclick=()=>{$('updMsg').textContent='';api('/api/ota?check=1')};
+$('updInstalar').onclick=()=>{$('updMsg').textContent='';api('/api/ota?install=1')};
+$('updArchivo').onchange=e=>{
+  const f=e.target.files[0];e.target.value='';
+  if(!f)return;
+  const m=$('updMsg');
+  if(!/\.uf2$/i.test(f.name)){m.className='msg mal';m.textContent='Tiene que ser un archivo .uf2';return}
+  m.className='msg';m.textContent='';
+  subiendo={p:0};pintarOta();
+  const x=new XMLHttpRequest();
+  x.open('POST','/api/update');
+  x.upload.onprogress=ev=>{if(ev.lengthComputable){subiendo.p=Math.round(ev.loaded*100/ev.total);pintarOta()}};
+  x.onload=x.onerror=()=>{
+    subiendo=null;
+    let j=null;try{j=JSON.parse(x.responseText)}catch(_){}
+    if(j&&j.ok){m.className='msg bien';m.textContent='¡Archivo instalado! La vitrina se reinicia…'}
+    else{m.className='msg mal';m.textContent=j&&j.error?j.error:'No se ha podido subir el archivo'}
+    if(S)pintarOta();
+  };
+  x.send(f);
+};
+
 $('herram').onclick=abrirWifi;
 $('cerrarWifi').onclick=cerrarWifi;
 $('verPass').onchange=e=>{$('pass').type=e.target.checked?'text':'password'};

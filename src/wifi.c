@@ -117,6 +117,10 @@ bool wifi_connected(void) {
     return mode == WIFI_MODE_AP || (mode == WIFI_MODE_STA && sta == STA_UP);
 }
 
+bool wifi_online(void) {
+    return mode == WIFI_MODE_STA && sta == STA_UP;
+}
+
 const char *wifi_ip(void) {
     int itf = mode == WIFI_MODE_AP ? CYW43_ITF_AP : CYW43_ITF_STA;
     return ip4addr_ntoa(netif_ip4_addr(&cyw43_state.netif[itf]));

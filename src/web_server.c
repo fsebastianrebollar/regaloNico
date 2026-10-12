@@ -8,6 +8,8 @@
 //         /api/preset?save=N | apply=N | del=N  (N = 0..4) -> modos de LED guardados
 //         /api/wifi?ssid=...&pass=... -> guarda la WiFi externa y reinicia
 //                                       (ssid vacío = red propia)
+//         /api/ota?check=1 | install=1 -> busca / instala la actualización de GitHub
+//         POST /api/update (cuerpo = .uf2) -> actualización manual
 #include "web_server.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +23,7 @@
 #include "settings.h"
 #include "mode_switch.h"
 #include "wifi.h"
+#include "ota.h"
 #include "index_html.h"
 
 #define REQ_MAX 1024
@@ -42,11 +45,14 @@ typedef struct {
     char path[PATH_MAX_LEN];  // aquí y no en la pila (las IRQ de lwIP la comparten)
     const uint8_t *data;      // cuerpo pendiente de enviar
     size_t data_left;
+    bool upload;              // recibiendo un .uf2 (POST /api/update)
+    uint32_t up_left;         // bytes del .uf2 que faltan por llegar
 } conn_t;
 
 static bool captive_mode;
 
 static void conn_free(conn_t *c) {
+    if (c->upload && !c->responded) ota_upload_abort("Se ha cortado la subida");
     if (c->pcb) {
         tcp_arg(c->pcb, NULL);
         tcp_recv(c->pcb, NULL);
@@ -134,7 +140,9 @@ static int state_json(char *out, size_t max) {
         else
             n += snprintf(out + n, max - n, "%snull", sep);
     }
-    if (n < (int)max) n += snprintf(out + n, max - n, "]}");
+    if (n < (int)max) n += snprintf(out + n, max - n, "],\"ota\":");
+    if (n < (int)max) n += ota_state_json(out + n, max - n);
+    if (n < (int)max) n += snprintf(out + n, max - n, "}");
     return n < (int)max ? n : (int)max - 1;
 }
 
@@ -228,6 +236,34 @@ static const char *apply_wifi_query(char *q) {
     return NULL;
 }
 
+static void respond_result(conn_t *c, const char *err) {
+    int n = err ? snprintf(c->body, BODY_MAX, "{\"ok\":false,\"error\":\"%s\"}", err)
+                : snprintf(c->body, BODY_MAX, "{\"ok\":true}");
+    respond(c, err ? 400 : 200, err ? "Bad Request" : "OK", "application/json", c->body, n, NULL);
+}
+
+// Pasa al actualizador el cuerpo del POST que viene en p a partir de off
+static void upload_feed(conn_t *c, struct pbuf *p, u16_t off) {
+    for (struct pbuf *q = p; q && !c->responded; q = q->next) {
+        if (off >= q->len) {
+            off -= q->len;
+            continue;
+        }
+        size_t n = MIN((size_t)(q->len - off), c->up_left);
+        const char *err = NULL;
+        if (n && !ota_upload_data((const uint8_t *)q->payload + off, n, &err)) {
+            respond_result(c, err);
+            return;
+        }
+        c->up_left -= n;
+        off = 0;
+        if (!c->up_left) {
+            respond_result(c, ota_upload_end(&err) ? NULL : err);
+            return;
+        }
+    }
+}
+
 static const char *find_header(const char *req, const char *name) {
     size_t n = strlen(name);
     for (const char *p = strstr(req, "\r\n"); p; p = strstr(p + 2, "\r\n"))
@@ -295,10 +331,22 @@ static void handle_request(conn_t *c) {
         respond(c, 200, "OK", "application/json", c->body, n, NULL);
     } else if (!strcmp(path, "/api/wifi")) {
         char tmp[1] = "";
-        const char *e = apply_wifi_query(query ? query : tmp);
-        int n = e ? snprintf(c->body, BODY_MAX, "{\"ok\":false,\"error\":\"%s\"}", e)
-                  : snprintf(c->body, BODY_MAX, "{\"ok\":true}");
-        respond(c, e ? 400 : 200, e ? "Bad Request" : "OK", "application/json", c->body, n, NULL);
+        respond_result(c, apply_wifi_query(query ? query : tmp));
+    } else if (!strcmp(path, "/api/ota")) {
+        if (query && !strcmp(query, "check=1")) ota_check();
+        else if (query && !strcmp(query, "install=1")) ota_install();
+        int n = state_json(c->body, BODY_MAX);
+        respond(c, 200, "OK", "application/json", c->body, n, NULL);
+    } else if (!strcmp(path, "/api/update") && !strcmp(method, "POST")) {
+        const char *cl = find_header(c->req, "Content-Length");
+        long len = cl ? strtol(cl, NULL, 10) : 0;
+        const char *err = NULL;
+        if (len <= 0) respond_result(c, "No ha llegado ningún archivo");
+        else if (!ota_upload_begin((uint32_t)len, &err)) respond_result(c, err);
+        else {  // la respuesta se manda cuando llegue todo el archivo
+            c->upload = true;
+            c->up_left = (uint32_t)len;
+        }
     } else {
         respond(c, 404, "Not Found", "text/plain", "not found", 9, NULL);
     }
@@ -318,12 +366,24 @@ static err_t on_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
         conn_free(c);
         return ERR_OK;
     }
-    if (!c->responded) {
+    c->idle_polls = 0;
+    if (c->upload) {
+        if (!c->responded) upload_feed(c, p, 0);
+    } else if (!c->responded) {
+        int prev = c->req_len;
         u16_t n = MIN(p->tot_len, REQ_MAX - 1 - c->req_len);
         pbuf_copy_partial(p, c->req + c->req_len, n, 0);
         c->req_len += n;
         c->req[c->req_len] = 0;
-        if (strstr(c->req, "\r\n\r\n") || c->req_len >= REQ_MAX - 1) handle_request(c);
+        char *end = strstr(c->req, "\r\n\r\n");
+        if (end) {
+            c->req_len = (int)(end + 4 - c->req);  // solo la cabecera; el cuerpo va aparte
+            c->req[c->req_len] = 0;
+            handle_request(c);
+            if (c->upload) upload_feed(c, p, (u16_t)(c->req_len - prev));
+        } else if (c->req_len >= REQ_MAX - 1) {
+            handle_request(c);
+        }
     }
     tcp_recved(pcb, p->tot_len);
     pbuf_free(p);
@@ -334,6 +394,7 @@ static err_t on_poll(void *arg, struct tcp_pcb *pcb) {
     conn_t *c = arg;
     if (!c) return ERR_OK;
     if (++c->idle_polls > MAX_IDLE_POLLS) {
+        if (c->upload && !c->responded) ota_upload_abort("La subida se ha quedado parada");
         tcp_arg(pcb, NULL);
         tcp_abort(pcb);
         free(c);
@@ -346,6 +407,7 @@ static err_t on_poll(void *arg, struct tcp_pcb *pcb) {
 static void on_err(void *arg, err_t err) {
     conn_t *c = arg;
     if (c) {
+        if (c->upload && !c->responded) ota_upload_abort("Se ha cortado la subida");
         c->pcb = NULL;  // lwIP ya lo ha liberado
         free(c);
     }

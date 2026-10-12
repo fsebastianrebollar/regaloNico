@@ -8,6 +8,7 @@
 #include "buttons.h"
 #include "settings.h"
 #include "mode_switch.h"
+#include "ota.h"
 
 #define BOOT_FLAG_MS  5000
 #define BOOT_FLAG_BRI 160
@@ -47,12 +48,14 @@ int main(void) {
         wifi_tick();
         sleep_ms(10);
     }
+    ota_boot_ok();           // si venimos de una actualización, nos quedamos con ella
     control_start_preset();  // siempre empieza en el modo 1
 
     uint32_t last_log = 0;
     while (true) {
         control_tick();
         wifi_tick();
+        ota_tick();
         buttons_tick();
         mode_switch_tick();
 

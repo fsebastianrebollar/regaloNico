@@ -26,7 +26,9 @@ static settings_t cur;
 static volatile bool dirty;
 
 void settings_init(void) {
-    const settings_t *s = (const settings_t *)(XIP_BASE + SETTINGS_OFFSET);
+    // Sin traducción de direcciones: con particiones A/B, XIP_BASE apunta al
+    // principio de la partición en uso, no al de la flash
+    const settings_t *s = (const settings_t *)(XIP_NOCACHE_NOALLOC_NOTRANSLATE_BASE + SETTINGS_OFFSET);
     memset(&cur, 0, sizeof cur);
     cur.magic = SETTINGS_MAGIC;
     cur.presets_magic = PRESETS_MAGIC;
