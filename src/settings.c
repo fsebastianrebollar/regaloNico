@@ -9,6 +9,7 @@
 #define SETTINGS_MAGIC  0x4E49434Fu  // "NICO"
 #define PRESETS_MAGIC   0x50524553u  // "PRES" (añadido después: se valida aparte)
 #define WIFI_MAGIC      0x57494649u  // "WIFI" (ídem)
+#define OTA_MAGIC       0x4F544131u  // "OTA1" (ídem)
 
 typedef struct {
     uint32_t magic;
@@ -18,6 +19,8 @@ typedef struct {
     uint32_t wifi_magic;
     char wifi_ssid[WIFI_SSID_MAX + 1];
     char wifi_pass[WIFI_PASS_MAX + 1];
+    uint32_t ota_magic;
+    uint8_t auto_update;
 } settings_t;
 
 static_assert(sizeof(settings_t) <= FLASH_PAGE_SIZE, "settings no cabe en una página");
@@ -33,9 +36,11 @@ void settings_init(void) {
     cur.magic = SETTINGS_MAGIC;
     cur.presets_magic = PRESETS_MAGIC;
     cur.wifi_magic = WIFI_MAGIC;
+    cur.ota_magic = OTA_MAGIC;
     if (s->magic != SETTINGS_MAGIC) return;
     if (s->presets_magic == PRESETS_MAGIC)
         memcpy(cur.presets, s->presets, sizeof cur.presets);
+    if (s->ota_magic == OTA_MAGIC) cur.auto_update = s->auto_update ? 1 : 0;
     if (s->wifi_magic == WIFI_MAGIC) {
         memcpy(cur.wifi_ssid, s->wifi_ssid, sizeof cur.wifi_ssid);
         memcpy(cur.wifi_pass, s->wifi_pass, sizeof cur.wifi_pass);
@@ -67,6 +72,14 @@ bool settings_save_if_dirty(void) {
         return false;
     }
     return true;
+}
+
+bool settings_auto_update(void) { return cur.auto_update; }
+
+void settings_set_auto_update(bool on) {
+    if (cur.auto_update == on) return;
+    cur.auto_update = on;
+    dirty = true;
 }
 
 const char *settings_wifi_ssid(void) { return cur.wifi_ssid; }

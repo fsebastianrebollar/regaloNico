@@ -24,4 +24,6 @@
 #define LWIP_NUM_NETIF_CLIENT_DATA     1
 #define MDNS_RESP_USENETIF_EXTCALLBACK 1
 #define MEMP_NUM_UDP_PCB               8
+// mDNS usa varios temporizadores; sin margen, lwIP se queda sin y se cuelga
+#define MEMP_NUM_SYS_TIMEOUT           (LWIP_NUM_SYS_TIMEOUT_INTERNAL + 8)
 #endif

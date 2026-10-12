@@ -25,5 +25,9 @@ const char *settings_wifi_ssid(void);
 const char *settings_wifi_pass(void);
 void settings_set_wifi(const char *ssid, const char *pass);
 
+// Instalar solas las actualizaciones de GitHub
+bool settings_auto_update(void);
+void settings_set_auto_update(bool on);
+
 const led_preset_t *settings_preset(int i);           // NULL si está vacío
 void settings_set_preset(int i, const led_preset_t *p);  // NULL lo borra

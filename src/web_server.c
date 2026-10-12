@@ -8,7 +8,8 @@
 //         /api/preset?save=N | apply=N | del=N  (N = 0..4) -> modos de LED guardados
 //         /api/wifi?ssid=...&pass=... -> guarda la WiFi externa y reinicia
 //                                       (ssid vacío = red propia)
-//         /api/ota?check=1 | install=1 -> busca / instala la actualización de GitHub
+//         /api/ota?check=1 | install=1 | auto=0/1 -> busca / instala la actualización
+//                                       de GitHub / instalación automática
 //         POST /api/update (cuerpo = .uf2) -> actualización manual
 //         /api/gol      -> ¡gol! 7 s (bandera y la copa girando)
 //         /description.xml y /api/<usuario>/lights... -> Alexa (emula un Hue)
@@ -344,6 +345,7 @@ static void handle_request(conn_t *c) {
     } else if (!strcmp(path, "/api/ota")) {
         if (query && !strcmp(query, "check=1")) ota_check();
         else if (query && !strcmp(query, "install=1")) ota_install();
+        else if (query && !strncmp(query, "auto=", 5)) settings_set_auto_update(query[5] == '1');
         int n = state_json(c->body, BODY_MAX);
         respond(c, 200, "OK", "application/json", c->body, n, NULL);
     } else if (!strcmp(path, "/api/update") && !strcmp(method, "POST")) {

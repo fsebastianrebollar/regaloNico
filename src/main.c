@@ -49,7 +49,7 @@ int main(void) {
         wifi_tick();
         sleep_ms(10);
     }
-    ota_boot_ok();           // si venimos de una actualización, nos quedamos con ella
+    ota_boot_ok();           // si venimos de una actualización, se confirma en ota_tick()
     control_start_preset();  // siempre empieza en el modo 1
 
     uint32_t last_log = 0;

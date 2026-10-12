@@ -6,6 +6,7 @@
 #include "pico/bootrom.h"
 #include "pico/flash.h"
 #include "hardware/flash.h"
+#include "hardware/watchdog.h"
 #include "hardware/structs/qmi.h"
 #include "boot/picobin.h"
 #include "boot/uf2.h"
@@ -14,6 +15,8 @@
 #include "wifi.h"
 #include "leds.h"
 #include "motor.h"
+#include "settings.h"
+#include "control.h"
 
 #define GH_HOST       "api.github.com"
 #define GH_REPO       "fsebastianrebollar/regaloNico"
@@ -24,6 +27,11 @@
 #define CHECK_EVERY_MS  (6u * 60 * 60 * 1000) // luego cada 6 h
 #define RETRY_MS        (30u * 60 * 1000)     // si falla, a la media hora
 #define REBOOT_DELAY_MS 1500                  // para que la web reciba la respuesta
+#define BUY_ONLINE_MS   3000                  // versión nueva: confirmarla tras 3 s en la WiFi...
+#define BUY_AP_MS       8000                  // ...o 8 s en la red propia...
+#define BUY_LATEST_MS   14000                 // ...y como muy tarde a los 14 s (la bootrom espera 16,7)
+#define WATCHDOG_MS     8000                  // si el programa se cuelga, se reinicia solo
+#define AUTO_RETRY_MS   (10u * 60 * 1000)     // instalación automática fallida: otro intento a los 10 min
 
 typedef enum {
     ST_IDLE, ST_CHECKING, ST_UP_TO_DATE, ST_AVAILABLE, ST_DOWNLOADING, ST_UPLOADING, ST_DONE, ST_ERROR,
@@ -306,17 +314,57 @@ bool ota_install(void) {
 
 /* ---------- Arranque y bucle ---------- */
 
+static bool buy_pending, watchdog_on;
+
 void ota_boot_ok(void) {
     boot_info_t bi = {0};
     rom_get_boot_info(&bi);
     printf("Firmware v%d en la partición %d\n", FW_VERSION, bi.partition);
-    if (rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) {
+    buy_pending = rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE;
+}
+
+// Una versión recién instalada no se confirma hasta ver que aguanta conectada
+// a la WiFi: si se cuelga antes, la bootrom vuelve sola a la anterior. Mientras
+// tanto no se toca el watchdog (es el que usa la bootrom para esa vuelta atrás).
+static void confirm_tick(void) {
+    static uint32_t online_since;
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    if (watchdog_on) {
+        watchdog_update();
+        return;
+    }
+    if (buy_pending) {
+        if (!wifi_online()) online_since = 0;
+        else if (!online_since) online_since = now;
+        bool ok = (online_since && now - online_since >= BUY_ONLINE_MS) ||
+                  (wifi_mode() == WIFI_MODE_AP && now >= BUY_AP_MS) || now >= BUY_LATEST_MS;
+        if (!ok) return;
         int rc = rom_explicit_buy(workarea, sizeof workarea);
         printf("Versión nueva confirmada (%d)\n", rc);
+        buy_pending = false;
     }
+    watchdog_enable(WATCHDOG_MS, true);
+    watchdog_on = true;
+}
+
+// Con la casilla marcada, una versión nueva se instala sola (sin cortar un
+// ¡gol! o el modo loco que esté en marcha)
+static void auto_install_tick(void) {
+    static uint32_t last_try;
+    static bool tried;
+    if (!settings_auto_update() || state != ST_AVAILABLE) return;
+    if (control_party_left_ms(PARTY_GOL) || control_party_left_ms(PARTY_CRAZY)) return;
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    if (tried && now - last_try < AUTO_RETRY_MS) return;
+    tried = true;
+    last_try = now;
+    printf("Instalación automática de la v%d\n", latest);
+    ota_install();
 }
 
 void ota_tick(void) {
+    confirm_tick();
+    auto_install_tick();
     if (state == ST_DONE && time_reached(reboot_at)) {
         printf("Reiniciando con la versión nueva...\n");
         sleep_ms(50);
@@ -339,7 +387,7 @@ int ota_state_json(char *out, size_t max) {
     ota_state_t st = state;
     uint32_t pct = st == ST_DOWNLOADING || st == ST_UPLOADING
                    ? (w.total ? (uint32_t)((uint64_t)w.received * 100 / w.total) : 0) : 0;
-    return snprintf(out, max, "{\"fw\":%d,\"st\":\"%s\",\"v\":%d,\"p\":%lu,\"err\":\"%s\"}",
+    return snprintf(out, max, "{\"fw\":%d,\"st\":\"%s\",\"v\":%d,\"p\":%lu,\"err\":\"%s\",\"auto\":%s}",
                     FW_VERSION, state_names[st], latest, (unsigned long)pct,
-                    st == ST_ERROR ? error_msg : "");
+                    st == ST_ERROR ? error_msg : "", settings_auto_update() ? "true" : "false");
 }

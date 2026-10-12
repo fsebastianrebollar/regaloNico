@@ -136,6 +136,8 @@ bool wifi_connected(void) {
     return mode == WIFI_MODE_AP || (mode == WIFI_MODE_STA && sta == STA_UP);
 }
 
+wifi_mode_t wifi_mode(void) { return mode; }
+
 bool wifi_online(void) {
     return mode == WIFI_MODE_STA && sta == STA_UP;
 }

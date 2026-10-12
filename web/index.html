@@ -141,6 +141,8 @@ body.bloq{position:fixed;left:0;right:0;overflow:hidden}
 .ajustes input:focus{border-color:var(--amarillo)}
 .ajustes .ver{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px;color:var(--mut);text-transform:none;letter-spacing:0;font-weight:600}
 .ajustes .ver input{width:auto}
+.ajustes .ver.auto{margin-top:14px;align-items:flex-start;line-height:1.35}
+.ajustes .ver.auto input{margin-top:2px;flex:none}
 .ajustes .botones{display:flex;flex-direction:column;gap:10px;margin-top:18px}
 .ajustes .botones button{border:0;border-radius:14px;padding:14px;font-size:16px;font-weight:900;cursor:pointer;background:var(--amarillo);color:#3a2a00}
 .ajustes .botones button.sec{background:rgba(255,255,255,.12);color:#fff}
@@ -310,6 +312,7 @@ input[type=range]::-moz-range-thumb{width:30px;height:30px;border:0;background:u
       <button type="button" class="sec" id="updBuscar">Buscar actualizaciones</button>
       <label class="subir" id="updSubir">📁 Subir archivo .uf2<input type="file" id="updArchivo" accept=".uf2" hidden></label>
     </div>
+    <label class="ver auto"><input type="checkbox" id="updAuto"> Instalar las actualizaciones automáticamente</label>
     <div class="msg" id="updMsg"></div>
   </form>
 </div>
@@ -633,9 +636,11 @@ function pintarOta(){
   $('updBuscar').style.display=externa?'':'none';
   $('updBuscar').disabled=$('updInstalar').disabled=ocupado;
   $('updSubir').classList.toggle('off',ocupado);
+  if(document.activeElement!==$('updAuto'))$('updAuto').checked=!!o.auto;
   if(o.st==='error'&&!subiendo){m.className='msg mal';m.textContent=o.err}
   else if(m.className==='msg mal'&&!subiendo)m.textContent='';
 }
+$('updAuto').onchange=e=>api('/api/ota?auto='+(e.target.checked?1:0));
 $('updBuscar').onclick=()=>{$('updMsg').textContent='';api('/api/ota?check=1')};
 $('updInstalar').onclick=()=>{$('updMsg').textContent='';api('/api/ota?install=1')};
 $('updArchivo').onchange=e=>{
