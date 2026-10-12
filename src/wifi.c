@@ -3,6 +3,7 @@
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "lwip/netif.h"
+#include "lwip/apps/mdns.h"
 #include "dhcpserver.h"
 #include "dnsserver.h"
 #include "settings.h"
@@ -15,6 +16,8 @@
 static dhcp_server_t dhcp_server;
 static dns_server_t dns_server;
 static wifi_mode_t mode = WIFI_MODE_NONE;
+
+static void start_mdns(void);
 
 static enum { STA_IDLE, STA_CONNECTING, STA_UP, STA_PAUSE } sta;
 static absolute_time_t sta_deadline;
@@ -58,6 +61,7 @@ void wifi_tick(void) {
         if (st == CYW43_LINK_UP) {
             sta = STA_UP;
             printf("Conectado a '%s', IP %s\n", settings_wifi_ssid(), wifi_ip());
+            start_mdns();
         } else if (st == CYW43_LINK_NONET || st == CYW43_LINK_BADAUTH || st == CYW43_LINK_FAIL) {
             printf("No se puede conectar (estado %d)\n", st);
             sta_retry_later();
@@ -80,6 +84,21 @@ void wifi_tick(void) {
     default:
         break;
     }
+}
+
+// En la WiFi externa la IP la pone el router: con mDNS se entra por
+// http://cumplenico.local desde móviles y ordenadores
+static void start_mdns(void) {
+    static bool started;
+    if (started) return;
+    started = true;
+    cyw43_arch_lwip_begin();
+    mdns_resp_init();
+    mdns_resp_add_netif(&cyw43_state.netif[CYW43_ITF_STA], WIFI_MDNS_NAME);
+    mdns_resp_add_service(&cyw43_state.netif[CYW43_ITF_STA], "La vitrina de Nico", "_http",
+                          DNSSD_PROTO_TCP, 80, NULL, NULL);
+    cyw43_arch_lwip_end();
+    printf("Web también en http://%s.local\n", WIFI_MDNS_NAME);
 }
 
 static void start_access_point(void) {

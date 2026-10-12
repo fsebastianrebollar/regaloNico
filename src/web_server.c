@@ -128,12 +128,12 @@ static int state_json(char *out, size_t max) {
     json_str(ssid, sizeof ssid, settings_wifi_ssid());
     int n = snprintf(out, max,
                      "{\"r\":%u,\"g\":%u,\"b\":%u,\"bri\":%u,\"fx\":\"%s\",\"motor\":%d,"
-                     "\"btn\":[{\"on\":%d,\"n\":%lu},{\"on\":%d,\"n\":%lu}],\"wifi\":\"%s\",\"ssid\":\"%s\","
+                     "\"btn\":[{\"on\":%d,\"n\":%lu},{\"on\":%d,\"n\":%lu}],\"wifi\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\","
                      "\"loco\":%lu,\"gol\":%lu,\"preset\":%d,\"presets\":[",
                      s.r, s.g, s.b, s.brightness, control_effect_name(s.effect), s.motor,
                      buttons[0].pressed, (unsigned long)buttons[0].presses,
                      buttons[1].pressed, (unsigned long)buttons[1].presses,
-                     settings_wifi_ssid()[0] ? "sta" : "ap", ssid,
+                     settings_wifi_ssid()[0] ? "sta" : "ap", ssid, wifi_ip(),
                      (unsigned long)(control_crazy_left_ms() + 999) / 1000,
                      (unsigned long)(control_party_left_ms(PARTY_GOL) + 999) / 1000, s.preset);
     for (int i = 0; i < NUM_PRESETS && n < (int)max; i++) {

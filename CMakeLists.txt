@@ -78,6 +78,7 @@ target_link_libraries(regalo_nico
     pico_cyw43_arch_lwip_threadsafe_background
     pico_lwip_mbedtls
     pico_mbedtls
+    pico_lwip_mdns
     boot_uf2_headers
     boot_picoboot_headers
 )

@@ -1,6 +1,8 @@
 #pragma once
 #include <stdbool.h>
 
+#define WIFI_MDNS_NAME "cumplenico"  // http://cumplenico.local en la WiFi externa
+
 typedef enum { WIFI_MODE_NONE, WIFI_MODE_STA, WIFI_MODE_AP } wifi_mode_t;
 
 // Si hay una WiFi configurada (settings_wifi_ssid) se conecta a ella y lo

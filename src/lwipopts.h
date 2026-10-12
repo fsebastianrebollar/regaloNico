@@ -18,4 +18,10 @@
 
 // Multicast para que Alexa encuentre la vitrina (SSDP)
 #define LWIP_IGMP 1
+
+// cumplenico.local en la WiFi externa (mDNS)
+#define LWIP_MDNS_RESPONDER            1
+#define LWIP_NUM_NETIF_CLIENT_DATA     1
+#define MDNS_RESP_USENETIF_EXTCALLBACK 1
+#define MEMP_NUM_UDP_PCB               8
 #endif

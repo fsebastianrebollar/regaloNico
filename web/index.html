@@ -97,7 +97,7 @@ h1 span{display:block;font-size:18px;color:var(--amarillo);text-shadow:0 2px 0 r
 @keyframes arco{to{background-position:300% 0}}
 .modal{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,20,9,.92);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .modal.on{display:flex}
-.modal{overscroll-behavior:contain;touch-action:none}
+.modal{overscroll-behavior:contain;touch-action:none;padding-top:max(16px,env(safe-area-inset-top));padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .modal .quiz{touch-action:pan-y;overscroll-behavior:contain}
 body.bloq{position:fixed;left:0;right:0;overflow:hidden}
 .quiz{width:100%;max-width:440px;background:linear-gradient(180deg,#0f4a24,#0a3219);border:2px solid rgba(255,255,255,.18);border-radius:24px;padding:20px 18px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.6);position:relative}
@@ -125,7 +125,7 @@ body.bloq{position:fixed;left:0;right:0;overflow:hidden}
 .modal.fiesta{animation:disco .25s steps(1) infinite}
 .herram{position:absolute;top:6px;right:0;z-index:2;width:36px;height:36px;border-radius:50%;border:2px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .herram:active{transform:scale(.92)}
-.ajustes{text-align:left;max-height:calc(100vh - 32px);overflow-y:auto}
+.ajustes{text-align:left;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow-y:auto}
 .ajustes .sep{height:2px;background:rgba(255,255,255,.12);margin:20px -18px 16px}
 .ajustes .titulo2{font:900 italic 18px "Arial Black",Impact,system-ui;text-transform:uppercase;color:var(--amarillo);text-align:center;margin-bottom:12px}
 .ajustes .barra{height:12px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden;margin:-4px 0 12px;display:none}
@@ -582,7 +582,7 @@ const esc=t=>t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&qu
 function pintarWifi(){
   if(!S)return;
   $('wifiAhora').innerHTML=S.wifi==='sta'
-    ?'Ahora conectada a la WiFi <b>'+esc(S.ssid)+'</b>. Entra con la IP que le dé el router.'
+    ?'Ahora conectada a la WiFi <b>'+esc(S.ssid)+'</b>. Desde esa WiFi entra en <b>cumplenico.local</b>'+(S.ip&&S.ip!=='0.0.0.0'?' o en <b>'+esc(S.ip)+'</b>':'')+'.'
     :'Ahora usa su red propia <b>cumplenico</b> (entra en <b>cumplenico.com</b>).';
   $('propia').style.display=S.wifi==='sta'?'':'none';
 }
